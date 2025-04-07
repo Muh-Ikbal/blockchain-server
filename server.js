@@ -2,7 +2,7 @@ const WebSocket = require('ws');
 const crypto = require('crypto');
 
 // Inisialisasi server WebSocket
-const server = new WebSocket.Server({ port: 8080,host:'0.0.0.0' });
+const server = new WebSocket.Server({ port: 8081,host:'0.0.0.0' });
 
 // Data struktur untuk menyimpan state blockchain
 let blockchain = [];
