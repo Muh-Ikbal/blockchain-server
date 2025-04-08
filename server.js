@@ -81,6 +81,15 @@ function calculateBalance(userId){
         }
      }
   }
+
+  for(let tsx of pendingTransactions){
+    if(tsx.sender === userId){
+      balance -= tsx.amount;
+    }
+    // if(tsx.recipient === userId){
+    //   balance += tsx.amount;
+    // }
+  }
   return balance;
 }
 
@@ -196,9 +205,11 @@ server.on('connection', (socket) => {
           transaction: message.transaction
         });
         const involvedUsers = [message.transaction.sender, message.transaction.recipient];
+        console.log(involvedUsers)
         involvedUsers.forEach(id => {
           const user = users.find(u => u.id === id);
           if (user && user.socket.readyState === WebSocket.OPEN) {
+            console.log('Balance for', id, ':', calculateBalance(id));
             user.socket.send(JSON.stringify({
               type: 'BALANCE_UPDATE',
               balance: calculateBalance(id)
