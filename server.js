@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const crypto = require('crypto');
+const { type } = require('os');
 
 // Inisialisasi server WebSocket
 const server = new WebSocket.Server({ port: 8081,host:'0.0.0.0' });
@@ -68,6 +69,21 @@ function createNewBlock(userId) {
   return minedBlock;
 }
 
+function calculateBalance(userId){
+  let balance = 100;
+  for(let block of blockchain){
+     for(let tsx of block.transactions){
+        if(tsx.sender === userId){
+          balance -= tsx.amount;
+        }
+        if(tsx.recipient === userId){
+          balance += tsx.amount;
+        }
+     }
+  }
+  return balance;
+}
+
 // Fungsi untuk validasi blockchain
 function isValidChain() {
   for (let i = 1; i < blockchain.length; i++) {
@@ -133,12 +149,21 @@ server.on('connection', (socket) => {
       case 'JOIN':
         // Tambahkan pengguna baru
         const userId = message.userId;
+        const existingUser = users.find(user => user.id === userId);
+        if(!existingUser){
         const newUser = {
           id: userId,
-          connectedAt: message.timestamp
+          connectedAt: message.timestamp,
+          socket: socket,
         };
+
         users.push(newUser);
-        
+        console.log(`User ${userId} joined (new)`);
+      }else{
+        existingUser.socket = socket;
+        console.log(`User ${userId} reconnected`);
+      }
+        socket.userId = userId;
         // Kirim status terkini ke pengguna baru
         socket.send(JSON.stringify({
           type: 'BLOCKCHAIN_UPDATE',
@@ -149,10 +174,16 @@ server.on('connection', (socket) => {
           type: 'PENDING_TRANSACTIONS',
           data: pendingTransactions
         }));
+
+        socket.send(JSON.stringify({
+          type:'BALANCE_UPDATE',
+          balance: calculateBalance(userId)
+        }))
         
         // Perbarui dan broadcast daftar pengguna
         updateUsers();
         console.log(`User ${userId} joined`);
+        console.log(users)
         break;
         
       case 'NEW_TRANSACTION':
@@ -164,7 +195,16 @@ server.on('connection', (socket) => {
           type: 'NEW_TRANSACTION',
           transaction: message.transaction
         });
-        
+        const involvedUsers = [message.transaction.sender, message.transaction.recipient];
+        involvedUsers.forEach(id => {
+          const user = users.find(u => u.id === id);
+          if (user && user.socket.readyState === WebSocket.OPEN) {
+            user.socket.send(JSON.stringify({
+              type: 'BALANCE_UPDATE',
+              balance: calculateBalance(id)
+            }));
+          }
+        });
         // Perbarui daftar transaksi tertunda
         updatePendingTransactions();
         console.log(`New transaction: ${message.transaction.sender} -> ${message.transaction.recipient} (${message.transaction.amount})`);
@@ -189,6 +229,14 @@ server.on('connection', (socket) => {
         // Perbarui daftar transaksi tertunda
         updatePendingTransactions();
         
+        users.forEach(user => {
+          if (user.socket.readyState === WebSocket.OPEN) {
+            user.socket.send(JSON.stringify({
+              type: 'BALANCE_UPDATE',
+              balance: calculateBalance(user.id)
+            }));
+          }
+        });
         console.log(`New block mined by ${message.userId}, index: ${newBlock.index}`);
         break;
         
@@ -200,18 +248,20 @@ server.on('connection', (socket) => {
   // Event handler untuk penutupan koneksi
   socket.on('close', () => {
     // Hapus pengguna dari daftar
-    const userIndex = users.findIndex(user => user.socket === socket);
-    if (userIndex !== -1) {
-      const userId = users[userIndex].id;
-      users.splice(userIndex, 1);
+    const userIndex = users.findIndex(user => user.id === socket.userId);
+    // if (userIndex !== -1) {
+    //   const userId = users[userIndex].id;
+    //   // users.splice(userIndex, 1);
       
-      // Perbarui daftar pengguna
-      updateUsers();
-      console.log(`User ${userId} disconnected`);
-    }
-    
+    //   // Perbarui daftar pengguna
+    //   updateUsers();
+    //   console.log(`User ${userId} disconnected`);
+    // }
+    // console.log(`User joined: ${message.userId}`);
     console.log('Client disconnected');
   });
 });
+
+
 
 console.log('WebSocket server started on port 8081');
